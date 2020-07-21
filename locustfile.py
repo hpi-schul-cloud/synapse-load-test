@@ -1,8 +1,9 @@
 import random
 import json
 import os.path
-from locust import HttpUser, task, TaskSet, between, constant, events
-from locust.runners import MasterRunner, LocalRunner
+import sys
+from locust import HttpUser, between, constant, events # pylint: disable=import-error
+from locust.runners import MasterRunner, LocalRunner # pylint: disable=import-error
 
 
 #########
@@ -13,7 +14,7 @@ AVAILABLE_USERS = []
 USER_DATA_FILE_PATH = 'data/users.json'
 
 @events.init.add_listener
-def on_locust_init(environment, **kwargs):
+def on_locust_init(environment):
     determine_runner(environment)
     load_user_data()
 
@@ -28,7 +29,7 @@ def determine_runner(environment):
 def load_user_data():
     if not os.path.exists(USER_DATA_FILE_PATH):
         print("Please create file '%s' to provide test users." % USER_DATA_FILE_PATH)
-        exit()
+        sys.exit()
 
     with open(USER_DATA_FILE_PATH) as json_file:
         global AVAILABLE_USERS
@@ -38,12 +39,11 @@ def get_random_user_data():
     return random.choice(AVAILABLE_USERS)
 
 
-#########
-## TASKS
-#########
+##########
+## HELPER
+##########
 
-# helper
-def syncRequest(self, timeout, since = ""):
+def sync_request(self, timeout, since=""):
     payload = {
         "timeout": timeout
     }
@@ -69,9 +69,13 @@ def syncRequest(self, timeout, since = ""):
     # extract rooms
     if 'rooms' in json_response_dict and 'join' in json_response_dict['rooms']:
         room_ids = list(json_response_dict['rooms']['join'].keys())
-        if len(room_ids):
+        if len(room_ids) > 0:
             self.room_ids = room_ids
 
+
+#########
+## TASKS
+#########
 
 def task_init_on_page_load(self):
     # GET /_matrix/client/versions (no auth)
@@ -90,16 +94,28 @@ def task_init_on_page_load(self):
     self.client.get("/_matrix/client/r0/joined_groups")
 
     # GET /_matrix/client/r0/profile/[user-id]
-    self.client.get("/_matrix/client/r0/profile/%s" % self.user_id, name="/_matrix/client/r0/profile/[user-id]")
+    self.client.get(
+        "/_matrix/client/r0/profile/%s" % self.user_id,
+        name="/_matrix/client/r0/profile/[user-id]"
+    )
 
     # Filter
     if self.filter_id:
         # GET /_matrix/client/r0/user/[user-id]/filter/1
-        self.client.get("/_matrix/client/r0/user/%s/filter/%s" % (self.user_id, self.filter_id), name="/_matrix/client/r0/user/[user-id]/filter/[filter]")
+        self.client.get(
+            "/_matrix/client/r0/user/%s/filter/%s" % (self.user_id, self.filter_id),
+            name="/_matrix/client/r0/user/[user-id]/filter/[filter]"
+        )
     else:
-        # POST /_matrix/client/r0/user/[user-id]/filter {"room":{"timeline":{"limit":20},"state":{"lazy_load_members":true}}} => {"filter_id": "1"}
-        body = {"room":{"timeline":{"limit":20},"state":{"lazy_load_members":True}}}
-        response = self.client.post("/_matrix/client/r0/user/%s/filter" % self.user_id, json=body, name="/_matrix/client/r0/user/[user-id]/filter")
+        # POST /_matrix/client/r0/user/[user-id]/filter
+        # body: {"room":{"timeline":{"limit":20},"state":{"lazy_load_members":true}}}
+        # response: {"filter_id": "1"}
+        body = {"room":{"timeline":{"limit":20}, "state":{"lazy_load_members":True}}}
+        response = self.client.post(
+            "/_matrix/client/r0/user/%s/filter" % self.user_id,
+            json=body,
+            name="/_matrix/client/r0/user/[user-id]/filter"
+        )
 
         # store filter id
         if response.status_code == 200:
@@ -111,14 +127,18 @@ def task_init_on_page_load(self):
     self.client.get("/_matrix/client/r0/capabilities")
 
     # PUT /_matrix/client/r0/presence/[user-id]/status {"presence":"online"}
-    self.client.put("/_matrix/client/r0/presence/%s/status" % self.user_id, json={"presence":"online"}, name="/_matrix/client/r0/presence/[user-id]/status")
+    self.client.put(
+        "/_matrix/client/r0/presence/%s/status" % self.user_id,
+        json={"presence":"online"},
+        name="/_matrix/client/r0/presence/[user-id]/status"
+    )
 
     # Encryption keys:
     # POST /_matrix/client/r0/keys/upload (complicated)
     # POST /_matrix/client/r0/keys/query (complicated)
 
     # First sync
-    syncRequest(self, 0, self.next_batch)
+    sync_request(self, 0, self.next_batch)
 
 def task_background_sync(self):
     if not self.filter_id:
@@ -126,11 +146,11 @@ def task_background_sync(self):
 
     # Background sync:
     # GET /_matrix/client/r0/sync?filter=1&timeout=0&since=s1051_37479_38_115_105_1_219_1489_1
-    syncRequest(self, 0, self.next_batch)
-    
+    sync_request(self, 0, self.next_batch)
+
     # GET /_matrix/client/r0/sync?filter=1&timeout=30000&since=s1051_37491_38_115_105_1_219_1489_1
     # (long-pooling messes up timing overview)
-    # self.syncRequest(self, 30000, self.next_batch)
+    # self.sync_request(self, 30000, self.next_batch)
 
 
 def task_send_message(self):
@@ -138,20 +158,32 @@ def task_send_message(self):
         return # rooms needed
 
     # select random room
-    room_id = random.choice(self.room_ids)    
+    room_id = random.choice(self.room_ids)
 
     # PUT /_matrix/client/r0/rooms/[room_id]/typing/[user_id] {"typing":true,"timeout":30000}
-    self.client.put("/_matrix/client/r0/rooms/%s/typing/%s" % (room_id, self.user_id), json={"typing": True, "timeout":30000}, name= "/_matrix/client/r0/rooms/[room_id]/typing/[user_id] - true")
-    
+    self.client.put(
+        "/_matrix/client/r0/rooms/%s/typing/%s" % (room_id, self.user_id),
+        json={"typing": True, "timeout":30000},
+        name="/_matrix/client/r0/rooms/[room_id]/typing/[user_id] - true"
+    )
+
     # PUT /_matrix/client/r0/rooms/[room-id]/typing/[user-id] {"typing":false}
-    self.client.put("/_matrix/client/r0/rooms/%s/typing/%s" % (room_id, self.user_id), json={"typing": False}, name= "/_matrix/client/r0/rooms/[room_id]/typing/[user_id] - false")
+    self.client.put(
+        "/_matrix/client/r0/rooms/%s/typing/%s" % (room_id, self.user_id),
+        json={"typing": False},
+        name="/_matrix/client/r0/rooms/[room_id]/typing/[user_id] - false"
+    )
 
     # POST /_matrix/client/r0/rooms/[room-id]/send/m.room.message { "msgtype": "m.text", "body": "msg"}
     message = {
         "msgtype": "m.text",
         "body": "Load Test Message",
     }
-    self.client.post("/_matrix/client/r0/rooms/%s/send/m.room.message" % room_id, json=message, name="/_matrix/client/r0/rooms/[room_id]/send/m.room.message")
+    self.client.post(
+        "/_matrix/client/r0/rooms/%s/send/m.room.message" % room_id,
+        json=message,
+        name="/_matrix/client/r0/rooms/[room_id]/send/m.room.message"
+    )
 
 
 #########
@@ -172,7 +204,7 @@ class BaseUser(HttpUser):
 
     def on_start(self):
         # select random user
-        user_data = get_random_user_data();
+        user_data = get_random_user_data()
         self.user_id = user_data['userId']
         self.token = user_data['accessToken']
 

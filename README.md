@@ -2,9 +2,9 @@
 
 ## Test User Creation
 
-The [schulcloud-synapse-synchronization](https://github.com/hpi-schul-cloud/schulcloud-synapse-synchronization) project is used to generate random test users on a test system. 
+The [schulcloud-synapse-synchronization](https://github.com/hpi-schul-cloud/schulcloud-synapse-synchronization) project is used to generate random test users on a test system.
 
-### Setup
+### Setup Sync Project
 
 1. Clone the synchronization project:
 ```sh
@@ -12,7 +12,7 @@ git clone git@github.com:hpi-schul-cloud/schulcloud-synapse-synchronization.git
 ```
 
 2. Create a `.env` file in the cloned project to configure the system to test:
-```
+```dotenv
 MATRIX_URI = https://matrix.domain.tld
 MATRIX_SERVERNAME = matrix.domain.tld
 MATRIX_SYNC_USER_NAME = sync
@@ -24,7 +24,7 @@ MATRIX_SECRET = XXX
 npm install
 ```
 
-### Execute
+### Create Test Users
 
 Run the integration tests to create test users and save them in a file (`users.json`):
 ```sh
@@ -43,7 +43,7 @@ The `users.json` file contains a list of users in the format:
 
 ## Simulate User Actions
 
-### Setup
+### Setup Load Test
 
 1. Clone this project:
 ```sh
@@ -59,7 +59,7 @@ pip install -r requirements.txt
 
 3. Copy the generated `users.json` file to the data folder of this project.
 
-### Execute
+### Execute Load Test
 
 Validate the setup by simulating only one user:
 ```sh
