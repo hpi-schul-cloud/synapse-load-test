@@ -2,8 +2,8 @@ import random
 import json
 import os.path
 import sys
-from locust import HttpUser, between, constant, events
-from locust.runners import MasterRunner, LocalRunner
+from locust import HttpUser, between, constant, events # pylint: disable=import-error
+from locust.runners import MasterRunner, LocalRunner # pylint: disable=import-error
 
 
 #########
