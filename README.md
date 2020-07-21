@@ -7,7 +7,7 @@ The [schulcloud-synapse-synchronization](https://github.com/hpi-schul-cloud/schu
 ### Setup
 
 1. Clone the synchronization project:
-```
+```sh
 git clone git@github.com:hpi-schul-cloud/schulcloud-synapse-synchronization.git
 ```
 
@@ -20,29 +20,38 @@ MATRIX_SECRET = XXX
 ```
 
 3. Install the dependencies
-```
+```sh
 npm install
 ```
 
 ### Execute
 
 Run the integration tests to create test users and save them in a file (`users.json`):
-```
+```sh
 npm run test:integration
 ```
 
+The `users.json` file contains a list of users in the format:
+```json
+[
+  {
+    "userId":"@xxx:matrix.xxx.tld",
+    "accessToken":"xxx"
+  }
+]
+```
 
 ## Simulate User Actions
 
 ### Setup
 
 1. Clone this project:
-```
+```sh
 git clone git@github.com:hpi-schul-cloud/synapse-load-test.git
 ```
 
 2. Setup python dependencies:
-```
+```sh
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -53,13 +62,13 @@ pip install -r requirements.txt
 ### Execute
 
 Validate the setup by simulating only one user:
-```
+```sh
 locust -u 1 -r 1 -H https://matrix.domain.tld
 ```
 Open the Locust UI in your browser [http://127.0.0.1:8089/](http://127.0.0.1:8089/) and start it.
 
 If everything works more users could be simulated. The following command starts more and more users to see at what number problems arise:
-```
+```sh
 locust -u 3000 -r 100 --step-load --step-users 200 --step-time 30s -H https://matrix.domain.tld
 ```
 
@@ -68,7 +77,7 @@ locust -u 3000 -r 100 --step-load --step-users 200 --step-time 30s -H https://ma
 To avoid limitations of a desktop computer or its internet connection it is advisable to execute locust on a remote machine.
 
 Setup for ubuntu 18.04 with 4 cores:
-```
+```sh
 # dependencies
 sudo apt update
 sudo apt install python3-pip
