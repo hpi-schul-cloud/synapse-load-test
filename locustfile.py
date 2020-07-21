@@ -42,6 +42,37 @@ def get_random_user_data():
 ## TASKS
 #########
 
+# helper
+def syncRequest(self, timeout, since = ""):
+    payload = {
+        "timeout": timeout
+    }
+
+    name = "/_matrix/client/r0/sync?timeout=%i" % timeout
+    if since != "":
+        payload["since"] = since
+        name = "/_matrix/client/r0/sync?timeout=%i&since=[timestamp]" % timeout
+
+    if self.filter_id:
+        payload["filter"] = self.filter_id
+        name += "&filter=[filter_id]"
+
+    response = self.client.get("/_matrix/client/r0/sync", params=payload, name=name)
+    if response.status_code != 200:
+        return
+
+    json_response_dict = response.json()
+    if 'next_batch' in json_response_dict:
+        self.next_batch = json_response_dict['next_batch']
+
+
+    # extract rooms
+    if 'rooms' in json_response_dict and 'join' in json_response_dict['rooms']:
+        room_ids = list(json_response_dict['rooms']['join'].keys())
+        if len(room_ids):
+            self.room_ids = room_ids
+
+
 def task_init_on_page_load(self):
     # GET /_matrix/client/versions (no auth)
     self.client.get("/_matrix/client/versions")
@@ -61,9 +92,20 @@ def task_init_on_page_load(self):
     # GET /_matrix/client/r0/profile/[user-id]
     self.client.get("/_matrix/client/r0/profile/%s" % self.user_id, name="/_matrix/client/r0/profile/[user-id]")
 
-    # GET /_matrix/client/r0/user/[user-id]/filter/1
-    # (does only work if filter haver been creaded)
-    # self.client.get("/_matrix/client/r0/user/%s/filter/%i" % (self.user_id, 2), name="/_matrix/client/r0/user/[user-id]/filter/[filter]")
+    # Filter
+    if self.filter_id:
+        # GET /_matrix/client/r0/user/[user-id]/filter/1
+        self.client.get("/_matrix/client/r0/user/%s/filter/%s" % (self.user_id, self.filter_id), name="/_matrix/client/r0/user/[user-id]/filter/[filter]")
+    else:
+        # POST /_matrix/client/r0/user/[user-id]/filter {"room":{"timeline":{"limit":20},"state":{"lazy_load_members":true}}} => {"filter_id": "1"}
+        body = {"room":{"timeline":{"limit":20},"state":{"lazy_load_members":True}}}
+        response = self.client.post("/_matrix/client/r0/user/%s/filter" % self.user_id, json=body, name="/_matrix/client/r0/user/[user-id]/filter")
+
+        # store filter id
+        if response.status_code == 200:
+            json_response_dict = response.json()
+            if 'filter_id' in json_response_dict:
+                self.filter_id = json_response_dict['filter_id']
 
     # GET /_matrix/client/r0/capabilities
     self.client.get("/_matrix/client/r0/capabilities")
@@ -75,45 +117,25 @@ def task_init_on_page_load(self):
     # POST /_matrix/client/r0/keys/upload (complicated)
     # POST /_matrix/client/r0/keys/query (complicated)
 
+    # First sync
+    syncRequest(self, 0, self.next_batch)
+
 def task_background_sync(self):
-    
-    def syncRequest(timeout, since = ""):
-        payload = {
-            #"filter": 1,
-            "timeout": timeout
-        }
-        
-        name = "/_matrix/client/r0/sync?timeout=%i" % timeout
-        if since != "":
-            payload["since"] = since
-            name = "/_matrix/client/r0/sync?timeout=%i&since=[timestamp]" % timeout
-
-        response = self.client.get("/_matrix/client/r0/sync", params=payload, name=name)
-        if response.status_code != 200:
-            response.failure()
-        
-        json_response_dict = response.json()
-        if 'next_batch' in json_response_dict:
-            self.next_batch = json_response_dict['next_batch']
-
-
-        # extract rooms
-        if 'rooms' in json_response_dict and 'join' in json_response_dict['rooms']:
-            room_ids = list(json_response_dict['rooms']['join'].keys())
-            if len(room_ids):
-                self.room_ids = room_ids
+    if not self.filter_id:
+        return # only sync after initial setup
 
     # Background sync:
     # GET /_matrix/client/r0/sync?filter=1&timeout=0&since=s1051_37479_38_115_105_1_219_1489_1
-    syncRequest(0, self.next_batch)
+    syncRequest(self, 0, self.next_batch)
     
     # GET /_matrix/client/r0/sync?filter=1&timeout=30000&since=s1051_37491_38_115_105_1_219_1489_1
     # (long-pooling messes up timing overview)
-    # self.syncRequest(30000, self.next_batch)
+    # self.syncRequest(self, 30000, self.next_batch)
+
 
 def task_send_message(self):
     if len(self.room_ids) == 0:
-        return
+        return # rooms needed
 
     # select random room
     room_id = random.choice(self.room_ids)    
@@ -129,11 +151,7 @@ def task_send_message(self):
         "msgtype": "m.text",
         "body": "Load Test Message",
     }
-    with self.client.post("/_matrix/client/r0/rooms/%s/send/m.room.message" % room_id, json=message, name="/_matrix/client/r0/rooms/[room_id]/send/m.room.message", catch_response=True) as response:
-        if response.status_code == 200 or response.status_code == 403: # even if user is not allowed to post into room, count the request as success
-            response.success()
-        else:
-            response.failure()
+    self.client.post("/_matrix/client/r0/rooms/%s/send/m.room.message" % room_id, json=message, name="/_matrix/client/r0/rooms/[room_id]/send/m.room.message")
 
 
 #########
@@ -141,7 +159,7 @@ def task_send_message(self):
 #########
 
 class BaseUser(HttpUser):
-    wait_time = between(5, 15) # execute tasks with seconds delay
+    wait_time = constant(10) # execute tasks with seconds delay
     weight = 0 # how likely to simulate user
     tasks = {}
 
@@ -149,6 +167,7 @@ class BaseUser(HttpUser):
     user_id = ""
     token = ""
     next_batch = ""
+    filter_id = None
     room_ids = []
 
     def on_start(self):
@@ -162,11 +181,11 @@ class BaseUser(HttpUser):
         self.client.headers["accept"] = "application/json"
 
 class IdleUser(BaseUser):
-    wait_time = between(5, 15) # execute tasks with seconds delay
+    wait_time = between(5, 30) # execute tasks with seconds delay
     weight = 3 # how likely to simulate user
     tasks = {task_init_on_page_load: 1, task_background_sync: 1}
 
 class ActiveUser(BaseUser):
-    wait_time = constant(2) # execute tasks with seconds delay
+    wait_time = between(2, 10) # execute tasks with seconds delay
     weight = 2 # how likely to simulate user
-    tasks = {task_init_on_page_load: 1, task_background_sync: 3, task_send_message: 8}
+    tasks = {task_init_on_page_load: 1, task_background_sync: 10, task_send_message: 20}
