@@ -75,16 +75,21 @@ locust -u 3000 -r 100 --step-load --step-users 200 --step-time 30s -H https://ma
 ### Cloud Setup
 
 To avoid limitations of a desktop computer or its internet connection it is advisable to execute locust on a remote machine.
+Create an instance with open SSH (22) and locust web ui (8089) ports.
+
+Copy the test files
+```sh
+scp locustfile.py user@host:locustfile.py
+scp requirements.txt user@host:requirements.txt
+scp -r data user@host:data
+```
 
 Setup for ubuntu 18.04 with 4 cores:
 ```sh
 # dependencies
 sudo apt update
-sudo apt install python3-pip
-sudo get install python3-venv
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+sudo apt install python-dev python-subprocess32 python3-pip -y
+pip3 install -r requirements.txt
 
 # increase open files limitations
 ulimit -n 65535
@@ -94,7 +99,7 @@ locust --worker &
 locust --worker &
 locust --worker &
 
-# start the master and configure locust via the ui on port 8089
+# start the master and configure locust via the ui on port host:8089
 locust --master
 ```
 
