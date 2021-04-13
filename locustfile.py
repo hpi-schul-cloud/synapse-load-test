@@ -150,7 +150,7 @@ def task_background_sync(self):
 
     # GET /_matrix/client/r0/sync?filter=1&timeout=30000&since=s1051_37491_38_115_105_1_219_1489_1
     # (long-pooling messes up timing overview)
-    # self.sync_request(self, 30000, self.next_batch)
+    sync_request(self, 30000, self.next_batch)
 
 
 def task_send_message(self):
