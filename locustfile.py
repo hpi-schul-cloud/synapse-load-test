@@ -14,14 +14,14 @@ AVAILABLE_USERS = []
 USER_DATA_FILE_PATH = 'data/users.json'
 
 @events.init.add_listener
-def on_locust_init(environment):
-    determine_runner(environment)
+def on_locust_init(runner, environment, web_ui):
+    determine_runner(runner)
     load_user_data()
 
-def determine_runner(environment):
-    if isinstance(environment.runner, LocalRunner):
+def determine_runner(runner):
+    if isinstance(runner, LocalRunner):
         print("Running in standalone node.")
-    elif isinstance(environment.runner, MasterRunner):
+    elif isinstance(runner, MasterRunner):
         print("Running as master node.")
     else:
         print("Running as worker node.")
