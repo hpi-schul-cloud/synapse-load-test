@@ -59,6 +59,13 @@ pip install -r requirements.txt
 
 3. Copy the generated `users.json` file to the data folder of this project.
 
+4. Create a `config.json` file in the data folder, which contains the secret for logins:
+```
+{
+  "shared_secret": "SECRET"
+}
+```
+
 ### Execute Load Test
 
 Validate the setup by simulating only one user:

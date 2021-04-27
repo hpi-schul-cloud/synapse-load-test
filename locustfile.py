@@ -2,6 +2,8 @@ import random
 import json
 import os.path
 import sys
+import hashlib
+import hmac
 from locust import HttpUser, between, constant, events # pylint: disable=import-error
 from locust.runners import MasterRunner, LocalRunner # pylint: disable=import-error
 
@@ -11,11 +13,14 @@ from locust.runners import MasterRunner, LocalRunner # pylint: disable=import-er
 #########
 
 AVAILABLE_USERS = []
+CONFIG = {}
 USER_DATA_FILE_PATH = 'data/users.json'
+CONFIG_FILE_PATH = 'data/config.json'
 
 @events.init.add_listener
 def on_locust_init(runner, environment, web_ui):
     determine_runner(runner)
+    load_config()
     load_user_data()
 
 def determine_runner(runner):
@@ -25,6 +30,14 @@ def determine_runner(runner):
         print("Running as master node.")
     else:
         print("Running as worker node.")
+
+def load_config():
+    if not os.path.exists(CONFIG_FILE_PATH):
+        print("No config file found! Create '%s' to configure the runner." % CONFIG_FILE_PATH)
+    else:
+        with open(CONFIG_FILE_PATH) as json_file:
+            global CONFIG
+            CONFIG = json.load(json_file)
 
 def load_user_data():
     if not os.path.exists(USER_DATA_FILE_PATH):
@@ -68,6 +81,7 @@ def sync_request(self, timeout, since=""):
 
     # extract rooms
     if 'rooms' in json_response_dict and 'join' in json_response_dict['rooms']:
+        # ToDo: check if user has permission to write in rooms
         room_ids = list(json_response_dict['rooms']['join'].keys())
         if len(room_ids) > 0:
             self.room_ids = room_ids
@@ -78,6 +92,8 @@ def sync_request(self, timeout, since=""):
 #########
 
 def task_init_on_page_load(self):
+    if not self.token:
+        return
     # GET /_matrix/client/versions (no auth)
     self.client.get("/_matrix/client/versions")
 
@@ -185,6 +201,31 @@ def task_send_message(self):
         name="/_matrix/client/r0/rooms/[room_id]/send/m.room.message"
     )
 
+def task_login(self):
+    if not 'shared_secret' in CONFIG:
+        return
+    secret = bytes(CONFIG['shared_secret'], 'ascii')
+    password = hmac.new(secret, str(self.user_id).encode('utf-8'), hashlib.sha512).hexdigest()
+
+    message = {
+        "type": "m.login.password",
+        "user": self.user_id,
+        "initial_device_display_name": "load_test",
+        "device_id": self.user_id[1:16],
+        "password": password,
+    }
+
+    response = self.client.post(
+        "/_matrix/client/r0/login",
+        json=message
+    )
+
+    if response.status_code == 200:
+        # store and use access token
+        json_response_dict = response.json()
+        self.token = json_response_dict['access_token']
+        self.client.headers["authorization"] = "Bearer " + self.token
+
 
 #########
 ## USERS
@@ -206,18 +247,21 @@ class BaseUser(HttpUser):
         # select random user
         user_data = get_random_user_data()
         self.user_id = user_data['userId']
-        self.token = user_data['accessToken']
+        self.token = "" # user_data['accessToken']
 
         # authenticate user
         self.client.headers["authorization"] = "Bearer " + self.token
         self.client.headers["accept"] = "application/json"
 
+        # login user befor doing other tasks
+        task_login(self)
+
 class IdleUser(BaseUser):
     wait_time = between(5, 30) # execute tasks with seconds delay
     weight = 3 # how likely to simulate user
-    tasks = {task_init_on_page_load: 1, task_background_sync: 1}
+    tasks = {task_login: 1, task_init_on_page_load: 10, task_background_sync: 10}
 
 class ActiveUser(BaseUser):
     wait_time = between(2, 10) # execute tasks with seconds delay
     weight = 2 # how likely to simulate user
-    tasks = {task_init_on_page_load: 1, task_background_sync: 10, task_send_message: 20}
+    tasks = {task_login: 1, task_init_on_page_load: 10, task_background_sync: 100, task_send_message: 20}
